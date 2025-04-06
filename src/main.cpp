@@ -78,6 +78,20 @@ public:
         }
     }
 
+    void insertRequest(int logicalTimestamp, int processId) {
+        size_t i = requestQueue.size() - 1;
+        while (i > 0 && requestQueue[i].first > logicalTimestamp) --i;
+        while (i > 0 && requestQueue[i].first == logicalTimestamp && requestQueue[i].second > processId) --i;
+        requestQueue.insert(requestQueue.begin() + i, {logicalTimestamp, processId});
+    }
+
+    size_t getOwnRequestId() {
+        size_t i = requestQueue.size() - 1;
+        while (i > 0 && requestQueue[i].second != rank) --i;
+        return i;
+    }
+
+
     void listener() {
         MPI_Status status;
         Message msg;
@@ -88,7 +102,7 @@ public:
             switch (msg.type)
             {
             case Message::Type::REQ:
-                requestQueue.push_back({msg.logicalTimestamp, msg.data.rank}); //TO DO - sort it
+                insertRequest(msg.logicalTimestamp, msg.data.rank);
                 send(Message::ack(logicalClock, rank), msg.data.rank);
                 break;
             case Message::Type::ACK:
