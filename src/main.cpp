@@ -90,6 +90,7 @@ public:
     std::vector<long long> releaseTimestamp;
     const int size;
     const int rank;
+    const int cityCount;
     int logicalClock = 0;
     int ackCount = 0;
     std::mutex Mutex;
@@ -98,7 +99,7 @@ public:
 
     std::mt19937 generator;
 
-    TrollHunter(int Rank, int Size, const MPI_Datatype msgType) : msgType(msgType), rank(Rank), size(Size), generator(std::random_device()()), releaseCounts(Size), releaseTimestamp(Size) {}
+    TrollHunter(int Rank, int Size, const MPI_Datatype msgType, int CityCount) : msgType(msgType), rank(Rank), size(Size), cityCount(CityCount), generator(std::random_device()()), releaseCounts(CityCount), releaseTimestamp(CityCount) {}
 
     void send(const Message msg, int dest=-1) {
         if (dest < 0) {
@@ -173,9 +174,10 @@ public:
     }
 
     void mainLoop() {
+        static std::uniform_real_distribution outOfCityDistrib(1.0, 5.0);
+        static std::uniform_real_distribution inCityDistrib(1.0, 5.0);
         while (true) {
-            std::uniform_real_distribution distrib(1.0, 2.0);
-            // std::this_thread::sleep_for(std::chrono::duration<double>(distrib(generator)));
+            std::this_thread::sleep_for(std::chrono::duration<double>(outOfCityDistrib(generator)));
             
             std::unique_lock<std::mutex> lock(Mutex);
             logicalClock++;
@@ -190,8 +192,8 @@ public:
             ackCv.wait(lock, [&] {return ackCount >= size;}); // dostajemy 1 ack od samych siebie
 
             size_t index = getOwnRequestId();
-            int city = index % size;
-            int releasesRequired = index / size;
+            int city = index % cityCount;
+            int releasesRequired = index / cityCount;
             printf("[%d] zebrałem ack, idx: %ld, chcę wejść do %d, potrzebuję jeszcze %d releasów\n", rank, index, city, releasesRequired - releaseCounts[city]);
 
             relCv.wait(lock, [&] {return releaseCounts[city] >= releasesRequired;});
@@ -201,12 +203,10 @@ public:
             // std::this_thread::sleep_until(tp);
             
             printf("[%d] wchodzę do miasta %d\n", rank, city);
-            // std::this_thread::sleep_for(std::chrono::duration<double>(distrib(generator))); // czas w mieście
+            std::this_thread::sleep_for(std::chrono::duration<double>(inCityDistrib(generator))); // czas w mieście
             printf("[%d] wychodzę z miasta %d\n", rank, city);
 
-            lock.lock();
-            send(Message::release(logicalClock, city));
-            lock.unlock();
+            send(Message::release(logicalClock, city)); // no lock needed since MPI_THREAD_MULTIPLE is required
         }
     }
 
@@ -233,7 +233,7 @@ int main(int argc, char **argv)
     MPI_Datatype msgType = Message::createMpiType();
 
     // init troll hunter
-    TrollHunter th(rank, size, msgType);
+    TrollHunter th(rank, size, msgType, argc > 1 ? std::stoi(argv[1]) : size);
 
     // run troll hunter
     std::thread listenerThread(std::bind(&TrollHunter::listener, &th));
