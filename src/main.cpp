@@ -91,6 +91,7 @@ public:
     std::vector<unsigned int> releaseCounts;
     std::vector<long long> releaseTimestamp;
 
+    unsigned requestQueueOffset = 0;
     std::deque<std::pair<int, int>> requestQueue;
     int logicalClock = 0;
     int ackCount = 0;
@@ -126,7 +127,14 @@ public:
             return pair.second == rank;
         });
 
-        return std::distance(requestQueue.begin(),it.base()) - 1;
+        return std::distance(requestQueue.begin(),it.base()) - 1 + requestQueueOffset;
+    }
+
+    void cleanQueue(){
+        while(releaseCounts[requestQueueOffset % cityCount] > requestQueueOffset / cityCount){
+            requestQueue.pop_front();
+            requestQueueOffset++;
+        }
     }
 
 
@@ -150,6 +158,7 @@ public:
             case Message::Type::RELEASE:
                 releaseCounts[msg.data.release.city]++;
                 releaseTimestamp[msg.data.release.city] = std::max(releaseTimestamp[msg.data.release.city], msg.data.release.timestamp);
+                cleanQueue();
                 relCv.notify_all();
                 break;
             

@@ -1,6 +1,6 @@
 CXXFLAGS = -O3 -Wall -pedantic
 
-build:
+main: clean
 	mkdir -p build
 	mpicxx $(CXXFLAGS) src/main.cpp -o build/main
 
