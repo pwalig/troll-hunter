@@ -21,7 +21,6 @@ class Message {
         releaseData release;
     };
     enum class Type { REQ, ACK, RELEASE };
-    // Type type;
     unsigned short type;
     int logicalTimestamp;
     Data data;
@@ -55,7 +54,7 @@ class Message {
     }
 
     static MPI_Datatype createMpiType(){
-        Message dummy_message;
+        Message dummy_message = Message();
         MPI_Aint base_addr;
         MPI_Aint displacements[4];
 
@@ -85,19 +84,20 @@ class TrollHunter {
 public:
 
     const MPI_Datatype msgType;
-    std::deque<std::pair<int, int>> requestQueue;
+    const int rank;
+    const int size;
+    const int cityCount;
+    std::mt19937 generator;
     std::vector<unsigned int> releaseCounts;
     std::vector<long long> releaseTimestamp;
-    const int size;
-    const int rank;
-    const int cityCount;
+
+    std::deque<std::pair<int, int>> requestQueue;
     int logicalClock = 0;
     int ackCount = 0;
     std::mutex Mutex;
     std::condition_variable ackCv;
     std::condition_variable relCv;
 
-    std::mt19937 generator;
 
     TrollHunter(int Rank, int Size, const MPI_Datatype msgType, int CityCount) : msgType(msgType), rank(Rank), size(Size), cityCount(CityCount), generator(std::random_device()()), releaseCounts(CityCount), releaseTimestamp(CityCount) {}
 
@@ -112,13 +112,6 @@ public:
         }
     }
 
-    // void insertRequest(int logicalTimestamp, int processId) {
-    //     size_t i = requestQueue.size() - 1;
-    //     while (i > 0 && requestQueue[i].first > logicalTimestamp) --i;
-    //     while (i > 0 && requestQueue[i].first == logicalTimestamp && requestQueue[i].second > processId) --i;
-    //     requestQueue.insert(requestQueue.begin() + i, {logicalTimestamp, processId});
-    // }
-
     void insertRequest(int logicalTimestamp, int processId){
         auto it = std::find_if(requestQueue.rbegin(), requestQueue.rend(), 
         [&](const std::pair<int, int> pair) -> bool{
@@ -126,12 +119,6 @@ public:
         });
         requestQueue.insert(it.base(), {logicalTimestamp, processId});
     }
-
-    // size_t getOwnRequestId() {
-    //     size_t i = requestQueue.size() - 1;
-    //     while (i > 0 && requestQueue[i].second != rank) --i;
-    //     return i;
-    // }
 
     size_t getOwnRequestId(){ // im not sure if this is better
         auto it = std::find_if(requestQueue.rbegin(), requestQueue.rend(), 
@@ -193,7 +180,7 @@ public:
 
             size_t index = getOwnRequestId();
             int city = index % cityCount;
-            int releasesRequired = index / cityCount;
+            unsigned releasesRequired = index / cityCount;
             printf("[%d] zebrałem ack, idx: %ld, chcę wejść do %d, potrzebuję jeszcze %d releasów\n", rank, index, city, releasesRequired - releaseCounts[city]);
 
             relCv.wait(lock, [&] {return releaseCounts[city] >= releasesRequired;});
