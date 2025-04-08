@@ -10,6 +10,8 @@
 #include <thread>
 #include <random>
 
+// #define NO_SLEEPING
+
 class Message {
     public:
     struct releaseData {
@@ -173,8 +175,9 @@ public:
         static std::uniform_real_distribution outOfCityDistrib(1.0, 5.0);
         static std::uniform_real_distribution inCityDistrib(1.0, 5.0);
         while (true) {
-            std::this_thread::sleep_for(std::chrono::duration<double>(outOfCityDistrib(generator)));
-            
+            #ifndef NO_SLEEPING
+                std::this_thread::sleep_for(std::chrono::duration<double>(outOfCityDistrib(generator)));
+            #endif
             std::unique_lock<std::mutex> lock(Mutex);
             logicalClock++;
 
@@ -194,12 +197,16 @@ public:
 
             relCv.wait(lock, [&] {return releaseCounts[city] >= releasesRequired;});
 
-            // std::chrono::system_clock::time_point tp{std::chrono::milliseconds{releaseTimestamp[city]}};
+            std::chrono::system_clock::time_point tp{std::chrono::milliseconds{releaseTimestamp[city]}};
             lock.unlock();
-            // std::this_thread::sleep_until(tp);
+            #ifndef NO_SLEEPING
+                std::this_thread::sleep_until(tp);
+            #endif
             
             printf("[%d] wchodzę do miasta %d\n", rank, city);
-            std::this_thread::sleep_for(std::chrono::duration<double>(inCityDistrib(generator))); // czas w mieście
+            #ifndef NO_SLEEPING
+                std::this_thread::sleep_for(std::chrono::duration<double>(inCityDistrib(generator))); // czas w mieście
+            #endif
             printf("[%d] wychodzę z miasta %d\n", rank, city);
 
             send(Message::release(logicalClock, city)); // no lock needed since MPI_THREAD_MULTIPLE is required
